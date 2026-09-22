@@ -33,10 +33,12 @@ window.firebaseCloudSave = async () => {
     await setDoc(doc(db, "users", user.uid), {
       progress, overrides, custom, updatedAt: serverTimestamp()
     }, { merge: true });
+    const status = document.getElementById("firebase-status");
+    if (status) status.textContent = "クラウド保存成功（UID: " + user.uid.slice(0, 8) + "…）";
   } catch (e) {
     console.error("Firestore保存エラー", e);
     const status = document.getElementById("firebase-status");
-    if (status) status.textContent = "ログイン中（クラウド同期エラー）";
+    if (status) status.textContent = "Firestoreエラー: " + (e?.code || e?.message || String(e));
   }
 };
 
@@ -51,7 +53,6 @@ window.addEventListener("DOMContentLoaded", () => {
     try {
       await signInWithPopup(auth, provider);
       await window.firebaseCloudSave();
-      status.textContent = "ログイン中: " + (auth.currentUser?.email || auth.currentUser?.displayName || "Googleアカウント");
       button.textContent = "ログイン済み";
       button.disabled = true;
     } catch (e) {
@@ -64,7 +65,6 @@ window.addEventListener("DOMContentLoaded", () => {
   onAuthStateChanged(auth, async user => {
     if (user) {
       await window.firebaseCloudSave();
-      status.textContent = "ログイン中: " + (user.email || user.displayName || "Googleアカウント");
       button.textContent = "ログイン済み";
       button.disabled = true;
     }
