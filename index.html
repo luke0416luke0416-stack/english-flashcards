@@ -2,12 +2,7 @@
 .manageForm{background:#fff;border-radius:16px;padding:14px;margin:10px 0}.manageForm label{display:block;font-size:12px;color:#666;margin:9px 0 4px}.manageForm input,.manageForm textarea,.manageForm select{width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;background:#fff}.manageRow{background:#fff;border-radius:14px;padding:12px;margin:8px 0}.manageRow .small{color:#777;font-size:12px}.manageBtns{display:flex;gap:7px;margin-top:8px}.manageBtns .btn{flex:1;padding:9px}.danger{background:#fee!important;color:#900!important}</style><script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-  import {
-  getFirestore,
-  doc,
-  setDoc,
-  serverTimestamp
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCtwv9Ssh7b0jeGnoTe3KZi_to8BrPNcRg",
@@ -19,6 +14,7 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
@@ -31,7 +27,12 @@ window.addEventListener("DOMContentLoaded", () => {
     status.textContent = "Googleログインを開始しています…";
     button.disabled = true;
     try {
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+    const user = result.user;
+    await setDoc(doc(db, "users", user.uid), {
+      test: "hello",
+      updatedAt: serverTimestamp()
+    }, { merge: true });
     } catch (e) {
       console.error(e);
       status.textContent = "ログインエラー: " + (e?.code || e?.message || String(e));
