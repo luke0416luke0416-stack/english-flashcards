@@ -2,7 +2,7 @@
 .manageForm{background:#fff;border-radius:16px;padding:14px;margin:10px 0}.manageForm label{display:block;font-size:12px;color:#666;margin:9px 0 4px}.manageForm input,.manageForm textarea,.manageForm select{width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;background:#fff}.manageRow{background:#fff;border-radius:14px;padding:12px;margin:8px 0}.manageRow .small{color:#777;font-size:12px}.manageBtns{display:flex;gap:7px;margin-top:8px}.manageBtns .btn{flex:1;padding:9px}.danger{background:#fee!important;color:#900!important}</style><script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCtwv9Ssh7b0jeGnoTe3KZi_to8BrPNcRg",
@@ -14,67 +14,73 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
+const db = getFirestore(app);
 
-window.firebaseCloudSave = async () => {
-  const user = auth.currentUser;
-  if (!user) return;
-  try {
-    const progress = {};
-    for (const k of ["sparta","alpha","idiom"]) {
-      try { progress[k] = JSON.parse(localStorage.getItem("flashcards_"+k) || '{"mastered":[]}'); }
-      catch(e) { progress[k] = {mastered:[]}; }
-    }
-    let overrides = {}, custom = {sparta:[],alpha:[],idiom:[]};
-    try { overrides = JSON.parse(localStorage.getItem("flashcards_overrides_v1") || "{}"); } catch(e) {}
-    try { custom = JSON.parse(localStorage.getItem("flashcards_custom_v1") || '{"sparta":[],"alpha":[],"idiom":[]}'); } catch(e) {}
-    await setDoc(doc(db, "users", user.uid), {
-      progress, overrides, custom, updatedAt: serverTimestamp()
-    }, { merge: true });
-    const status = document.getElementById("firebase-status");
-    if (status) status.textContent = "クラウド保存成功（UID: " + user.uid.slice(0, 8) + "…）";
-  } catch (e) {
-    console.error("Firestore保存エラー", e);
-    const status = document.getElementById("firebase-status");
-    if (status) status.textContent = "Firestoreエラー: " + (e?.code || e?.message || String(e));
+function fcReadProgress(){
+  const out={};
+  for(const k of ["sparta","alpha","idiom"]){
+    try{
+      const v=JSON.parse(localStorage.getItem("flashcards_"+k)||'{"mastered":[]}');
+      out[k]={mastered:Array.isArray(v.mastered)?v.mastered:[]};
+    }catch(e){out[k]={mastered:[]};}
   }
+  return out;
+}
+
+function fcMergeProgress(local, cloud){
+  const out={};
+  for(const k of ["sparta","alpha","idiom"]){
+    const a=Array.isArray(local?.[k]?.mastered)?local[k].mastered:[];
+    const b=Array.isArray(cloud?.[k]?.mastered)?cloud[k].mastered:[];
+    out[k]={mastered:[...new Set([...a,...b].map(String))]};
+  }
+  return out;
+}
+
+async function firebaseSync(){
+  const user=auth.currentUser;
+  if(!user) return;
+  const ref=doc(db,"users",user.uid);
+  try{
+    const snap=await getDoc(ref);
+    const cloud=snap.exists()?snap.data():{};
+    const local=fcReadProgress();
+
+    // 初回も既存データも「統合」する。空のクラウドで端末を上書きしない。
+    const merged=fcMergeProgress(local,cloud.progress||{});
+
+    for(const k of ["sparta","alpha","idiom"]){
+      state[k]={mastered:merged[k].mastered};
+      localStorage.setItem("flashcards_"+k,JSON.stringify(state[k]));
+    }
+
+    let overrides={},custom={sparta:[],alpha:[],idiom:[]};
+    try{overrides=JSON.parse(localStorage.getItem("flashcards_overrides_v1")||"{}")}catch(e){}
+    try{custom=JSON.parse(localStorage.getItem("flashcards_custom_v1")||'{"sparta":[],"alpha":[],"idiom":[]}')}catch(e){}
+
+    await setDoc(ref,{
+      progress:merged,
+      overrides,
+      custom,
+      updatedAt:serverTimestamp()
+    },{merge:true});
+
+    if(typeof renderHome==="function") renderHome();
+    const status=document.getElementById("firebase-status");
+    if(status) status.textContent="同期済み";
+  }catch(e){
+    console.error("Firestore sync error",e);
+    const status=document.getElementById("firebase-status");
+    if(status) status.textContent="同期エラー: "+(e?.code||e?.message||String(e));
+  }
+}
+
+window.firebaseCloudSave=async function(){
+  return firebaseSync();
 };
 
-window.firebaseCloudLoad = async (user) => {
-  try {
-    const snap = await getDoc(doc(db, "users", user.uid));
-    if (!snap.exists()) return;
-    const data = snap.data();
-    if (!data.progress) return;
-
-    for (const k of ["sparta","alpha","idiom"]) {
-      if (data.progress[k] !== undefined) {
-        localStorage.setItem("flashcards_"+k, JSON.stringify(data.progress[k]));
-      }
-    }
-    if (data.overrides !== undefined) {
-      localStorage.setItem("flashcards_overrides_v1", JSON.stringify(data.overrides));
-    }
-    if (data.custom !== undefined) {
-      localStorage.setItem("flashcards_custom_v1", JSON.stringify(data.custom));
-    }
-
-    // アプリ起動時の表示をクラウド側の進捗に合わせて更新
-    if (typeof renderHome === "function") renderHome();
-    if (typeof renderAlphaSearch === "function") renderAlphaSearch();
-    if (typeof renderIdiomSearch === "function") renderIdiomSearch();
-    if (typeof renderManager === "function" && typeof mode !== "undefined" && mode === "manage") renderManager();
-
-    const status = document.getElementById("firebase-status");
-    if (status) status.textContent = "クラウドデータ読み込み成功（UID: " + user.uid.slice(0, 8) + "…）";
-  } catch (e) {
-    console.error("Firestore読み込みエラー", e);
-    const status = document.getElementById("firebase-status");
-    if (status) status.textContent = "Firestore読み込みエラー: " + (e?.code || e?.message || String(e));
-  }
-};
 
 window.addEventListener("DOMContentLoaded", () => {
   const button = document.getElementById("firebase-login");
@@ -86,9 +92,6 @@ window.addEventListener("DOMContentLoaded", () => {
     button.disabled = true;
     try {
       await signInWithPopup(auth, provider);
-      await window.firebaseCloudSave();
-      button.textContent = "ログイン済み";
-      button.disabled = true;
     } catch (e) {
       console.error(e);
       status.textContent = "ログインエラー: " + (e?.code || e?.message || String(e));
@@ -96,15 +99,18 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+
   onAuthStateChanged(auth, async user => {
     if (user) {
-      await window.firebaseCloudLoad(user);
-      await window.firebaseCloudSave();
+      status.textContent = "同期中…";
       button.textContent = "ログイン済み";
       button.disabled = true;
+      await firebaseSync();
+      status.textContent = "同期済み: " + (user.email || user.displayName || "Googleアカウント");
     }
   });
-});</script>
+});
+</script>
 </head><body><div id="app" class="app">
 <div class="top"><div><div class="brand">英語フラッシュカード</div><div class="sub">iPhone Chrome・オフライン対応</div></div><button id="net" class="badge">確認中</button></div>
 <div class="noteBox">📱 <b>最初にオンラインでこのページを1回開けば、以後はネットなしで使えます。</b><br>データはこのページ内に内蔵。外部サイトは使用しません。</div>
