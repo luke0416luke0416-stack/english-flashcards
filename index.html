@@ -18,63 +18,42 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
+window.firebaseCloudSave = async () => {
+  const user = auth.currentUser;
+  if (!user) return;
+  try {
+    const progress = {};
+    for (const k of ["sparta","alpha","idiom"]) {
+      try { progress[k] = JSON.parse(localStorage.getItem("flashcards_"+k) || '{"mastered":[]}'); }
+      catch(e) { progress[k] = {mastered:[]}; }
+    }
+    let overrides = {}, custom = {sparta:[],alpha:[],idiom:[]};
+    try { overrides = JSON.parse(localStorage.getItem("flashcards_overrides_v1") || "{}"); } catch(e) {}
+    try { custom = JSON.parse(localStorage.getItem("flashcards_custom_v1") || '{"sparta":[],"alpha":[],"idiom":[]}'); } catch(e) {}
+    await setDoc(doc(db, "users", user.uid), {
+      progress, overrides, custom, updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (e) {
+    console.error("Firestore保存エラー", e);
+    const status = document.getElementById("firebase-status");
+    if (status) status.textContent = "ログイン中（クラウド同期エラー）";
+  }
+};
+
 window.addEventListener("DOMContentLoaded", () => {
   const button = document.getElementById("firebase-login");
   const status = document.getElementById("firebase-status");
   if (!button || !status) return;
-
-  window.firebaseCloudSave = async () => {
-    const user = auth.currentUser;
-    if (!user || !window.flashcardGetSyncData) return;
-    try {
-      const data = window.flashcardGetSyncData();
-      await setDoc(doc(db, "users", user.uid), {
-        test: "hello",
-        progress: data.progress,
-        overrides: data.overrides,
-        custom: data.custom,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-    } catch (e) {
-      console.error("Firestore保存エラー", e);
-    }
-  };
-
-  async function loadCloudData(user) {
-    if (!window.flashcardApplySyncData) return;
-    status.textContent = "クラウドデータを確認中…";
-    try {
-      const snap = await getDoc(doc(db, "users", user.uid));
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data.progress && data.overrides && data.custom) {
-          window.flashcardApplySyncData({
-            progress: data.progress,
-            overrides: data.overrides,
-            custom: data.custom
-          });
-        } else {
-          await window.firebaseCloudSave();
-        }
-      } else {
-        await window.firebaseCloudSave();
-      }
-      status.textContent = "ログイン中: " + (user.email || user.displayName || "Googleアカウント");
-      button.textContent = "ログイン済み";
-      button.disabled = true;
-    } catch (e) {
-      console.error("Firestore読み込みエラー", e);
-      status.textContent = "ログイン中（クラウド同期エラー）";
-      button.textContent = "ログイン済み";
-      button.disabled = true;
-    }
-  }
 
   button.addEventListener("click", async () => {
     status.textContent = "Googleログインを開始しています…";
     button.disabled = true;
     try {
       await signInWithPopup(auth, provider);
+      await window.firebaseCloudSave();
+      status.textContent = "ログイン中: " + (auth.currentUser?.email || auth.currentUser?.displayName || "Googleアカウント");
+      button.textContent = "ログイン済み";
+      button.disabled = true;
     } catch (e) {
       console.error(e);
       status.textContent = "ログインエラー: " + (e?.code || e?.message || String(e));
@@ -82,11 +61,15 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  onAuthStateChanged(auth, user => {
-    if (user) loadCloudData(user);
+  onAuthStateChanged(auth, async user => {
+    if (user) {
+      await window.firebaseCloudSave();
+      status.textContent = "ログイン中: " + (user.email || user.displayName || "Googleアカウント");
+      button.textContent = "ログイン済み";
+      button.disabled = true;
+    }
   });
-});
-</script>
+});</script>
 </head><body><div id="app" class="app">
 <div class="top"><div><div class="brand">英語フラッシュカード</div><div class="sub">iPhone Chrome・オフライン対応</div></div><button id="net" class="badge">確認中</button></div>
 <div class="noteBox">📱 <b>最初にオンラインでこのページを1回開けば、以後はネットなしで使えます。</b><br>データはこのページ内に内蔵。外部サイトは使用しません。</div>
@@ -107,49 +90,11 @@ const $=id=>document.getElementById(id);
 let mode='sparta', queue=[], pos=0, flipped=false, unit=1;
 const state={sparta:load('sparta'),alpha:load('alpha'),idiom:load('idiom')};
 function load(k){try{const v=JSON.parse(localStorage.getItem('flashcards_'+k)||'{"mastered":[]}');return Array.isArray(v.mastered)?v:{mastered:[]}}catch(e){return {mastered:[]}}}
-function save(k){
-  try{localStorage.setItem('flashcards_'+k,JSON.stringify(state[k]))}catch(e){}
-  if(window.firebaseCloudSave) window.firebaseCloudSave();
-}
+function save(k){try{localStorage.setItem('flashcards_'+k,JSON.stringify(state[k]))}catch(e){} if(window.firebaseCloudSave) window.firebaseCloudSave();}
 const OV_KEY='flashcards_overrides_v1', CUSTOM_KEY='flashcards_custom_v1';
 function readJSON(k,f){try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(f))}catch(e){return f}}
 let overrides=readJSON(OV_KEY,{}), custom=readJSON(CUSTOM_KEY,{sparta:[],alpha:[],idiom:[]});
-function persistData(){
-  try{
-    localStorage.setItem(OV_KEY,JSON.stringify(overrides));
-    localStorage.setItem(CUSTOM_KEY,JSON.stringify(custom));
-  }catch(e){}
-  if(window.firebaseCloudSave) window.firebaseCloudSave();
-}
-window.flashcardGetSyncData=()=>({
-  progress: clone(state),
-  overrides: clone(overrides),
-  custom: clone(custom)
-});
-window.flashcardApplySyncData=(data)=>{
-  if(data?.progress?.sparta) state.sparta=data.progress.sparta;
-  if(data?.progress?.alpha) state.alpha=data.progress.alpha;
-  if(data?.progress?.idiom) state.idiom=data.progress.idiom;
-  if(data?.overrides && typeof data.overrides==='object') overrides=data.overrides;
-  if(data?.custom && typeof data.custom==='object'){
-    custom={
-      sparta:Array.isArray(data.custom.sparta)?data.custom.sparta:[],
-      alpha:Array.isArray(data.custom.alpha)?data.custom.alpha:[],
-      idiom:Array.isArray(data.custom.idiom)?data.custom.idiom:[]
-    };
-  }
-  try{
-    localStorage.setItem('flashcards_sparta',JSON.stringify(state.sparta));
-    localStorage.setItem('flashcards_alpha',JSON.stringify(state.alpha));
-    localStorage.setItem('flashcards_idiom',JSON.stringify(state.idiom));
-    localStorage.setItem(OV_KEY,JSON.stringify(overrides));
-    localStorage.setItem(CUSTOM_KEY,JSON.stringify(custom));
-  }catch(e){}
-  renderHome();
-  renderAlphaSearch();
-  renderIdiomSearch();
-  if(mode==='manage') renderManager();
-};
+function persistData(){try{localStorage.setItem(OV_KEY,JSON.stringify(overrides));localStorage.setItem(CUSTOM_KEY,JSON.stringify(custom))}catch(e){} if(window.firebaseCloudSave) window.firebaseCloudSave();}
 function clone(x){return JSON.parse(JSON.stringify(x))}
 function keyOf(c,deck){return deck==='idiom'?String(c.id):String(c.n)}
 function applyOverride(c,deck){const o=overrides[deck]?.[keyOf(c,deck)];return o?Object.assign(clone(c),o):clone(c)}
