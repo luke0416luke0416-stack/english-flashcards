@@ -131,4 +131,23 @@ document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>setM
 window.addEventListener('online',()=>{$('net').textContent='ONLINE'});window.addEventListener('offline',()=>{$('net').textContent='OFFLINE'});$('net').textContent=navigator.onLine?'ONLINE':'OFFLINE';
 initSeekBar();renderUnits();renderEikenIdiomUnits();renderHome();
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+
+/* Swipe navigation: horizontal swipe = previous/next card. */
+(function(){
+  let sx=null, sy=null, st=0;
+  document.addEventListener('touchstart',function(e){
+    if(e.touches.length!==1)return;
+    sx=e.touches[0].clientX; sy=e.touches[0].clientY; st=Date.now();
+  },{passive:true});
+  document.addEventListener('touchend',function(e){
+    if(sx===null||e.changedTouches.length!==1)return;
+    const dx=e.changedTouches[0].clientX-sx;
+    const dy=e.changedTouches[0].clientY-sy;
+    const dt=Date.now()-st; sx=null; sy=null;
+    if(dt>700||Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.25)return;
+    stopTimer();
+    if(dx<0){if(pos<queue.length-1){pos++;renderCard()}}
+    else{if(pos>0){pos--;renderCard()}}
+  },{passive:true});
+})();
 </script></body></html>
