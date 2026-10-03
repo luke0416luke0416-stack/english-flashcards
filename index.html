@@ -9,7 +9,7 @@
 .structureChunk{display:inline-flex;flex-direction:column;align-items:center;vertical-align:top;margin:0 1px;line-height:1.35;min-height:3.1em}
 .structureText{display:block;padding:0 2px;border-bottom:2px solid currentColor;line-height:1.35;min-height:1.85em;box-sizing:border-box}
 .structureLabel{display:block;font-size:11px;font-weight:700;line-height:1.25;height:14px;color:currentColor;opacity:.72;box-sizing:border-box}
-.structure-s{color:#5b83b6}.structure-v{color:#b86b6b}.structure-o{color:#62966f}.structure-c{color:#876da3}
+.structure-s{color:#5b83b6}.structure-v{color:#b86b6b}.structure-o{color:#62966f}.structure-c{color:#876da3}.structure-m{display:inline;min-height:0;color:#333}.structure-m .structureText{border-bottom:0;min-height:0;padding:0}.structure-m .structureLabel{display:none}
 .structurePlain{display:inline-block;vertical-align:top;line-height:1.35;color:#333;min-height:3.1em;box-sizing:border-box}
 .structureHint{font-size:11px;color:#aaa;margin-top:5px}
 .exampleTarget{color:#3f7fc4;font-weight:700}
@@ -196,7 +196,10 @@ const STRUCT_COMMON_VERBS=new Set([
 'bear','bears','bore','settle','settles','settled','branch','branches','branched','opt','opts','opted','press','presses','pressed','doze','dozes','dozed','nod','nods','nodded','roll','rolls','rolled','fit','fits','fitted','leave','leaves','left','break','breaks','broke','say','says','said','call','calls','called','get','gets','got','become','becomes','became','arrive','arrives','arrived','practice','practices','practiced','run','runs','ran','fall','falls','fell','come','comes','came','shake','shakes','shook','let','lets','set','sets','tore','tear','tears','put','puts','drag','drags','dragged','blow','blows','blew','pass','passes','passed','tune','tunes','tuned','pull','pulls','pulled','split','splits','drew','draw','draws','cut','cuts','keep','keeps','kept','hang','hangs','hung','chip','chips','chipped','go','goes','went','dispose','disposes','disposed','stick','sticks','stuck','listen','listens','listened','answer','answered','answers','ask','asked','asks','describe','described','describes','discuss','discussed','discusses','examine','examined','examines','solicit','solicited','solicits','disseminate','disseminated','disseminates','summon','summoned','summons','reinforce','reinforced','reinforces','divert','diverted','diverts','exploit','exploited','exploits','undermine','undermined','undermines','reinstate','reinstated','reinstates','impede','impeded','impedes','subtract','subtracted','subtracts','surmount','surmounted','surmounts','lock','locked','locks','study','studied','studies','open','opened','opens','read','reads','read','write','writes','wrote','use','used','uses','like','likes','liked','love','loves','loved','hate','hates','hated','have','has','had','take','takes','took','give','gives','gave','show','shows','showed','tell','tells','told','call','calls','called','keep','keeps','kept','make','makes','made','find','finds','found','see','sees','saw','know','knows','knew','meet','meets','met','help','helps','helped','choose','chooses','chose','bring','brings','brought','buy','buys','bought','sell','sells','sold','send','sends','sent','receive','receives','received','visit','visits','visited','build','builds','built','change','changes','changed','increase','increases','increased','reduce','reduces','reduced','support','supports','supported','follow','follows','followed','avoid','avoids','avoided','watch','watches','watched','use','used','uses','need','needs','needed','want','wants','wanted','plan','plans','planned','decide','decides','decided'
 ]);
 const STRUCT_M_START=new Set(['after','before','during','over','next','yesterday','today','tomorrow','tonight','recently','finally','until','when','while','because','by','from','with','for','at','in','on']);
+const STRUCT_EXTRA_VERBS=new Set(['felt','feel','sat','sit','spread','spreads','spreading','understood','understand','understands','understanding','burst','bursts','bursting','spike','spikes','spiked','skyrocket','skyrockets','skyrocketed','dwindle','dwindles','dwindled','friend','friends','friended','dis','disses','dissed','encrypt','encrypts','encrypted','decode','decodes','decoded','deduct','deducts','deducted','subtract','subtracted','specify','specifies','specified','write','writes','wrote','saying','say','says','said','exist','exists','existed','decline','declines','declined','lessen','lessens','lessened','grow','grows','grew','grown','remain','remains','remained','become','becomes','became','connect','connects','connected','spread','spreads','spread']);
+new Set(['after','before','during','over','next','yesterday','today','tomorrow','tonight','recently','finally','until','when','while','because','by','from','with','for','at','in','on']);
 const STRUCT_ADV_M=new Set(['technically','literally','figuratively','seemingly','apparently','probably','possibly','certainly','definitely','actually','really','usually','often','sometimes','always','never','also','still','already','just','only','even','almost','nearly','quite','rather','very','too','enough','well','quickly','slowly','carefully','easily','hard','hardly','simply','merely','mostly','mainly','especially','particularly','generally','normally','currently','immediately','eventually','here','there','now','then']);
+const STRUCT_INITIAL_PREP_M=new Set(['after','before','during','over','by','from','with','for','at','in','on','under','without','despite','between','among','through','throughout','within','beyond','near','beside','behind','around','across','against','toward','towards','into','upon','beforehand']);
 const STRUCT_ADJ=new Set(['different','similar','important','necessary','possible','impossible','ready','happy','sad','angry','afraid','aware','familiar','responsible','available','free','full','rich','poor','safe','dangerous','interesting','useful','harmful','burdensome','lingering','regenerative','notable','ubiquitous','prevalent','bullish','cognitive','distinguished','irrelevant','aesthetic','static','fabulous','malnourished','noted','technical','technically']);
 function structTokens(str){
   const m=String(str).match(/[A-Za-z]+(?:['’][A-Za-z]+)?(?:-[A-Za-z]+)*|\d+(?:\.\d+)?|[^A-Za-z\s]/g)||[];
@@ -206,14 +209,28 @@ function structNorm(x){return String(x||'').toLowerCase().replace(/[’]/g,"'");
 function structIsWord(x){return /^[A-Za-z]+(?:['’][A-Za-z]+)?(?:-[A-Za-z]+)*$/.test(x)}
 function structBase(x){return structNorm(x).replace(/s$/,'').replace(/ed$/,'').replace(/ing$/,'');}
 function structFindFinite(t){
-  // まず既知の動詞・助動詞を優先し、複数形名詞（Expertsなど）を誤ってVにしない。
-  for(let i=1;i<t.length;i++){
+  // 主節の有限動詞を探す。まず候補を集め、主語中の名詞と紛らわしい
+  // 語（the plan / the need など）を文脈で除外する。
+  const candidates=[];
+  for(let i=0;i<t.length;i++){
     const w=structNorm(t[i]);
-    if(STRUCT_MODAL.has(w)||STRUCT_BE.has(w)||STRUCT_HAVE.has(w)||STRUCT_DO.has(w)||STRUCT_COMMON_VERBS.has(w)||STRUCT_CONTROL.has(w)) return i;
+    if(STRUCT_MODAL.has(w)||STRUCT_BE.has(w)||STRUCT_HAVE.has(w)||STRUCT_DO.has(w)||STRUCT_COMMON_VERBS.has(w)||STRUCT_EXTRA_VERBS.has(w)||STRUCT_COPULA.has(w)||STRUCT_CONTROL.has(w)) candidates.push(i);
   }
-  // 命令文は先頭語が動詞になるため、既知の動詞なら先頭も候補にする。
-  if(t.length && (STRUCT_COMMON_VERBS.has(structNorm(t[0]))||STRUCT_CONTROL.has(structNorm(t[0])))) return 0;
-  // 未知語は形態で補完する。ただし先頭語は主語候補なので除外。
+  const det=new Set(['the','a','an','this','that','these','those','my','your','his','her','our','their','its','some','any','each','every','no']);
+  for(const i of candidates){
+    const prev=structNorm(t[i-1]||'');
+    const next=structNorm(t[i+1]||'');
+    // 「the plan needs」「the need grows」のように、冠詞直後の候補語が
+    // 主語名詞で、その直後にもう一つの動詞候補がある場合は前者を採らない。
+    if(det.has(prev) && candidates.some(j=>j>i)) continue;
+    // 形容詞＋名詞の主語内にある候補語を簡易除外。
+    if(i>1 && candidates.some(j=>j>i) && structIsWord(t[i-1]) && !STRUCT_BE.has(prev) && !STRUCT_MODAL.has(prev)){
+      const p2=structNorm(t[i-2]||'');
+      if(det.has(p2)) continue;
+    }
+    return i;
+  }
+  // 既知語で拾えない場合だけ形態で補完。ただし文頭の語はM/S候補なので除外。
   for(let i=1;i<t.length;i++){
     const w=structNorm(t[i]);
     if(/^[a-z]+(ed|ing)$/.test(w)) return i;
@@ -228,102 +245,118 @@ function structPrepVAt(t,i){
   const raw=structNorm(t[i]);
   const two=raw+' '+p;
   const base=raw.replace(/s$/,'').replace(/ies$/,'y');
-  if(STRUCT_PREP_V.has(two)||STRUCT_PREP_V.has(base+' '+p))return 1;
-  return 0;
+  return (STRUCT_PREP_V.has(two)||STRUCT_PREP_V.has(base+' '+p))?1:0;
 }
 function structFindVerbEnd(t,v){
-  let e=v;
-  const w=structNorm(t[e]);
-  // modal + base verb
-  if(STRUCT_MODAL.has(w) && e+1<t.length && structIsWord(t[e+1])) e++;
-  // have + participle; be + participle/gerund.  Copular be itself stays V.
-  if(STRUCT_HAVE.has(w) && e+1<t.length && structIsWord(t[e+1])) e++;
-  if(STRUCT_BE.has(w) && e+1<t.length && structIsWord(t[e+1])){
-    const n=structNorm(t[e+1]);
-    const likelyParticiple=/^(?:[a-z]+ing|[a-z]+ed|[a-z]+en)$/.test(n);
-    const byNext=structNorm(t[e+2]||'')==='by';
-    if(likelyParticiple || byNext) e++;
+  // 文構造表示では「1つの有限動詞」をVとする。
+  // 特に be + adjective / be + noun は be だけをVにする。
+  const w=structNorm(t[v]);
+  if(STRUCT_BE.has(w))return v;
+  // modal / have / do の補助動詞は後続語とまとめる。
+  if(STRUCT_MODAL.has(w) && v+1<t.length && structIsWord(t[v+1]))return v+1;
+  if(STRUCT_HAVE.has(w) && v+1<t.length && structIsWord(t[v+1]))return v+1;
+  if(STRUCT_DO.has(w) && v+1<t.length && structIsWord(t[v+1]))return v+1;
+  // 通常の句動詞だけは particle をVに含める。
+  if(v+1<t.length && structIsWord(t[v+1])){
+    const p=structNorm(t[v+1]);
+    if(STRUCT_PARTICLES.has(p) && !STRUCT_BE.has(w))return v+1;
   }
-  // lexical verb + to-infinitive: treat the whole control expression as V
-  const main=structNorm(t[e]);
-  if(STRUCT_CONTROL.has(main) && structNorm(t[e+1])==='to' && structIsWord(t[e+2])) e+=2;
-  // common phrasal/prepositional verb: include particle/preposition in V
-  if(e+1<t.length && structIsWord(t[e+1])){
-    const p=structNorm(t[e+1]);
-    if(!STRUCT_BE.has(w) && STRUCT_PARTICLES.has(p) && (e+2>=t.length || structNorm(t[e+2])==='the' || structNorm(t[e+2])==='a' || structNorm(t[e+2])==='an' || /^[A-Za-z]/.test(t[e+2]||''))) e++;
-  }
-  return e;
+  return v;
 }
 function structNextChunk(t,start){
   if(start>=t.length)return null;
-  let e=start;
-  let depth=0;
+  let e=start,depth=0;
   while(e+1<t.length){
-    const w=structNorm(t[e]);
-    const n=structNorm(t[e+1]);
-    if(['(', '['].includes(w))depth++;
-    if([')', ']'].includes(w))depth--;
+    const w=structNorm(t[e]), n=structNorm(t[e+1]);
+    if(w==='('||w==='[')depth++;
+    if(w===')'||w===']')depth--;
     if(depth===0 && [',','.',';','!','?'].includes(t[e+1]))break;
     if(depth===0 && ['and','but','or'].includes(n))break;
-    if(depth===0 && (STRUCT_M_START.has(n) || STRUCT_ADV_M.has(n)))break;
+    if(depth===0 && (STRUCT_M_START.has(n)||STRUCT_ADV_M.has(n)))break;
     e++;
   }
   return [start,e];
 }
+function structInitialModifierEnd(t){
+  const first=structNorm(t[0]||'');
+  if(first==='there' && (STRUCT_BE.has(structNorm(t[1]||''))||STRUCT_HAVE.has(structNorm(t[1]||''))))return -1;
+  if(!(STRUCT_INITIAL_PREP_M.has(first)||STRUCT_ADV_M.has(first)))return -1;
+  for(let i=1;i<t.length;i++){
+    if(t[i]===',')return i;
+    if(['.',';','!','?'].includes(t[i]))break;
+  }
+  // カンマなしの単純な副詞は1語だけM。
+  if(STRUCT_ADV_M.has(first))return 0;
+  return -1;
+}
+function structSubjectStart(t,v,initialEnd){
+  let s=initialEnd>=0?initialEnd+1:0;
+  while(s<v && !structIsWord(t[s]))s++;
+  return s;
+}
+function structIsAdjWord(w){
+  const n=structNorm(w);
+  if(STRUCT_ADJ.has(n))return true;
+  // be + -ed は形容詞になり得る。代表的な状態形容詞を明示的に扱う。
+  return new Set(['worried','interested','excited','surprised','tired','bored','pleased','satisfied','concerned','confused','disappointed','frightened','shocked','amazed','annoyed','embarrassed','prepared','relaxed','exhausted','delighted','devoted','determined','involved','related','required','needed','known','based','located','situated','married','closed','open','broken','lost','gone','done','finished']).has(n);
+}
+function structComplementEnd(t,start){
+  if(start>=t.length)return -1;
+  let e=start;
+  while(e+1<t.length){
+    const n=structNorm(t[e+1]);
+    if([',','.',';','!','?'].includes(t[e+1]))break;
+    if(STRUCT_ADV_M.has(n))break;
+    // 前置詞句・副詞句はCから切り離す。
+    if(STRUCT_INITIAL_PREP_M.has(n)||n==='about'||n==='for'||n==='with'||n==='to'||n==='from'||n==='of'||n==='by'||n==='in'||n==='on'||n==='at')break;
+    e++;
+  }
+  return e;
+}
 function structureAnalyze(sentence){
   const t=structTokens(sentence); if(!t.length)return [];
-  const v=structFindFinite(t); if(v<0)return [];
-  let sStart=0;
-  // Sentence-initial modifiers (e.g. Technically,) are M, not part of S.
-  while(sStart<v){
-    const n=structNorm(t[sStart]);
-    if(STRUCT_ADV_M.has(n)){sStart++; continue;}
-    if(!structIsWord(t[sStart])){sStart++; continue;}
-    break;
-  }
   const parts=[];
-  // Keep sentence-initial modifiers visible as M instead of silently dropping them.
-  if(sStart>0) parts.push({a:0,b:sStart-1,k:'m'});
-  let sEnd=v-1; while(sEnd>=sStart && !structIsWord(t[sEnd]))sEnd--;
-  if(v>sStart){ if(sEnd<sStart)return []; parts.push({a:sStart,b:sEnd,k:'s'}); }
-  let ve=structFindVerbEnd(t,v);
-  // Prepositional verb with a known two-word combination: V includes prep.
-  if(ve===v && v+1<t.length && structPrepVAt(t,v))ve=v+1;
+  const initialEnd=structInitialModifierEnd(t);
+  let searchStart=initialEnd>=0?initialEnd+1:0;
+  while(searchStart<t.length&&!structIsWord(t[searchStart]))searchStart++;
+  const rel=structFindFinite(t.slice(searchStart));
+  if(rel<0)return [];
+  const v=searchStart+rel;
+  if(v<=searchStart)return [];
+
+  // 文頭の前置詞句・副詞句はSに絶対に吸収しない。
+  if(initialEnd>=0)parts.push({a:0,b:initialEnd,k:'m'});
+
+  // 動詞の直前までを主語。句読点などは除外。
+  let sEnd=v-1;
+  while(sEnd>=searchStart&&!structIsWord(t[sEnd]))sEnd--;
+  if(sEnd<searchStart)return [];
+  parts.push({a:searchStart,b:sEnd,k:'s'});
+
   const vw=structNorm(t[v]);
-  const be=STRUCT_BE.has(vw);
-  const prepNext=v+1<t.length?structNorm(t[v+1]):''; const prepBase=vw.replace(/s$/,'').replace(/ies$/,'y'); const prepPair=(v+1<t.length && (STRUCT_PREP_V.has(vw+' '+prepNext)||STRUCT_PREP_V.has(prepBase+' '+prepNext)));
-  const cop=be || (STRUCT_COPULA.has(vw) && !prepPair);
+  const ve=structFindVerbEnd(t,v);
   parts.push({a:v,b:ve,k:'v'});
   let r=ve+1;
+  while(r<t.length&&[','].includes(t[r]))r++;
   if(r>=t.length)return parts;
-  if(be && r<t.length && structNorm(t[r])==='by'){
-    parts.push({a:r,b:t.length-1,k:'m'});
-    return parts;
-  }
-  if(cop){
-    let cr=r;
-    while(cr<t.length && (STRUCT_ADV_M.has(structNorm(t[cr])) || !structIsWord(t[cr])))cr++;
-    if(cr>r)parts.push({a:r,b:cr-1,k:'m'});
-    const ch=structNextChunk(t,cr);
-    if(ch)parts.push({a:ch[0],b:ch[1],k:'c'});
-    let mr=ch?ch[1]+1:cr;
-    if(mr<t.length)parts.push({a:mr,b:t.length-1,k:'m'});
-    return parts;
-  }
-  // causative/object-complement verbs: first NP is O, following adjective/NP is C
-  if(STRUCT_CASING.has(vw) && ve===v){
-    let oEnd=r;
-    while(oEnd+1<t.length && structNorm(t[oEnd+1])!=='as' && !['by','.',';',',','!','?'].includes(t[oEnd+1]))oEnd++;
-    if(oEnd>=r)parts.push({a:r,b:oEnd,k:'o'});
-    let cStart=oEnd+1;
-    if(cStart<t.length && structNorm(t[cStart])==='as')cStart++;
-    if(cStart<t.length && structIsWord(t[cStart])){
-      const c=structNextChunk(t,cStart);
-      if(c){parts.push({a:c[0],b:c[1],k:'c'}); if(c[1]+1<t.length)parts.push({a:c[1]+1,b:t.length-1,k:'m'});}
+
+  // be動詞：be自体がV。後続が形容詞・名詞ならC、前置詞句等はM。
+  if(STRUCT_BE.has(vw)){
+    if(structIsAdjWord(t[r])){
+      const ce=structComplementEnd(t,r);
+      parts.push({a:r,b:ce,k:'c'});
+      r=ce+1;
+    }else if(structIsWord(t[r]) && !STRUCT_INITIAL_PREP_M.has(structNorm(t[r]))){
+      const ce=structComplementEnd(t,r);
+      parts.push({a:r,b:ce,k:'c'});
+      r=ce+1;
     }
+    if(r<t.length)parts.push({a:r,b:t.length-1,k:'m'});
     return parts;
   }
-  if(STRUCT_M_START.has(structNorm(t[r])) || STRUCT_ADV_M.has(structNorm(t[r]))){
+
+  // 一般動詞：直後のNPをO。残りの前置詞句・副詞句をM。
+  if(STRUCT_M_START.has(structNorm(t[r]))||STRUCT_ADV_M.has(structNorm(t[r]))){
     parts.push({a:r,b:t.length-1,k:'m'});
     return parts;
   }
